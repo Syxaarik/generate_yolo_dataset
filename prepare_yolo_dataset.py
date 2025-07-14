@@ -5,17 +5,26 @@ from pathlib import Path
 import yaml
 
 # === НАСТРОЙКИ ===
-SOURCE_DIR = str(input("Введите название вашей папки dataset: "))
+SOURCE_DIR = input("Введите название вашей папки dataset (например, yolo_dataset): ").strip()
 DEST_DIR = 'dataset'
 TRAIN_RATIO = 0.8  # 80% - train, 20% - val
+
+# Проверка наличия необходимых папок
+assert Path(SOURCE_DIR).exists(), f"❌ Папка '{SOURCE_DIR}' не найдена"
+assert (Path(SOURCE_DIR) / 'images').exists(), "❌ В папке нет подпапки 'images'"
+assert (Path(SOURCE_DIR) / 'labels').exists(), "❌ В папке нет подпапки 'labels'"
+assert (Path(SOURCE_DIR) / 'classes.txt').exists(), "❌ Не найден файл 'classes.txt'"
 
 # Создаём нужные папки
 for split in ['train', 'val']:
     os.makedirs(f'{DEST_DIR}/images/{split}', exist_ok=True)
     os.makedirs(f'{DEST_DIR}/labels/{split}', exist_ok=True)
 
-# Получаем список всех изображений
-image_files = list(Path(f'{SOURCE_DIR}/images').glob('*.*'))
+# Поддерживаемые форматы изображений
+image_extensions = ('.jpg', '.jpeg', '.png')
+
+# Получаем и перемешиваем изображения
+image_files = [p for p in Path(f'{SOURCE_DIR}/images').glob('*') if p.suffix.lower() in image_extensions]
 random.shuffle(image_files)
 
 split_index = int(len(image_files) * TRAIN_RATIO)
@@ -32,24 +41,30 @@ def move_files(file_list, split):
         label_path = Path(f'{SOURCE_DIR}/labels') / label_name
         if label_path.exists():
             shutil.copy(label_path, f'{DEST_DIR}/labels/{split}/{label_name}')
+        else:
+            print(f"⚠️ Метка не найдена для {img_name}, пропускается.")
 
 
 move_files(train_files, 'train')
 move_files(val_files, 'val')
 
-# Чтение классов из classes.txt
+# Чтение классов
 with open(f'{SOURCE_DIR}/classes.txt', 'r', encoding='utf-8') as f:
-    class_names = [line.strip() for line in f.readlines()]
+    class_names = [line.strip() for line in f if line.strip()]
 
-# Создание data.yaml
+# Создание корректного data.yaml
 data_yaml = {
-    'train': str(Path(DEST_DIR) / 'images/train'),
-    'val': str(Path(DEST_DIR) / 'images/val'),
+    'train': f'{DEST_DIR}/images/train',
+    'val': f'{DEST_DIR}/images/val',
     'nc': len(class_names),
     'names': class_names
 }
 
 with open(f'{DEST_DIR}/data.yaml', 'w', encoding='utf-8') as f:
-    yaml.dump(data_yaml, f, allow_unicode=True)
+    yaml.dump(data_yaml, f, allow_unicode=True, sort_keys=False)
 
-print(f"✅ Датасет готов: {DEST_DIR}/ (train/val + data.yaml)")
+print("\n✅ Датасет успешно подготовлен!")
+print(f"➡️ Обучение: {data_yaml['train']}")
+print(f"➡️ Валидация: {data_yaml['val']}")
+print(f"➡️ YAML: {DEST_DIR}/data.yaml")
+print(f"➡️ Классов: {len(class_names)}")
